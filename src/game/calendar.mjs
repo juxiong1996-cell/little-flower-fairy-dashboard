@@ -158,13 +158,40 @@ function timestamp(value) {
   return result;
 }
 
-export async function readDoubleSignCalendar(now = Date.now()) {
+async function loadCalendarData() {
   const version = (await fetchResource('PackageManifest_DefaultPackage.version', 200)).toString('utf8').trim();
   if (!/^\d{4}-\d{2}-\d{2}-\d{1,10}$/.test(version)) throw new Error('官方资源版本号格式发生变化');
   const manifest = await fetchResource(`PackageManifest_DefaultPackage_${version}.bytes`, 20_000_000);
   const data = unpackDataBundle(await fetchResource(findDataBundle(manifest), 40_000_000));
-  return { version, current: parseDoubleSignCalendar(data, now) };
+  return { version, data };
 }
+
+// Share only the official configuration bytes. Each call computes today's
+// activity day again, including when a cached table spans Beijing midnight.
+export function createCalendarReader({ loadData = loadCalendarData, now = Date.now, cacheMs = 300_000 } = {}) {
+  let cached;
+  let downloading;
+  return async function readCalendar(at) {
+    let resource = cached;
+    if (!resource || now() >= resource.expiresAt) {
+      downloading ??= Promise.resolve().then(loadData).then(value => {
+        cached = { ...value, expiresAt: now() + cacheMs };
+        return cached;
+      }).finally(() => { downloading = undefined; });
+      resource = await downloading;
+    }
+    try {
+      return { version: resource.version, current: parseDoubleSignCalendar(resource.data, at ?? now()) };
+    } catch (error) {
+      // A changed or damaged table must be retried rather than retained until
+      // the cache expires. Network failures also clear the shared promise.
+      if (cached === resource) cached = undefined;
+      throw error;
+    }
+  };
+}
+
+export const readDoubleSignCalendar = createCalendarReader();
 
 // Parse the official table data separately so the reward IDs can be checked
 // without a live account or a network request. These are configuration fields,

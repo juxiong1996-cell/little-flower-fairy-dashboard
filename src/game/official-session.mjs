@@ -2,6 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { openOfficialGame } from '../browser/login.mjs';
 import { enterGameForApi } from '../browser/game-navigation.mjs';
 import { createProtocol } from './official-protocol.mjs';
+import { installServerAvailability } from '../browser/server-availability.mjs';
 
 // This bridge stays with the official socket so its rolling header remains in sync
 // after an API request. It never exposes login cookies, tokens or unrelated frames.
@@ -118,6 +119,21 @@ export async function openActivitySession(account, {
   let bridge;
   try {
     await game.client.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    // Attach the read-only observer to existing sockets too. New windows have
+    // the same hook preloaded before the official client opens its connection.
+    const availability = await game.client.send('Runtime.evaluate', {
+      expression: `(() => {
+        const availability = window.__flowerServerAvailability?.read();
+        const refreshStartup = location.origin === "https://webgl-hua.61.com" &&
+          document.getElementById('unity-loading-bar')?.style.display === 'none' &&
+          (!availability?.known || availability.maintenance);
+        (${installServerAvailability.toString()})("https://webgl-hua.61.com");
+        return refreshStartup;
+      })()`, returnByValue: true,
+    });
+    // Replay the official startup check when an old window missed 120 or still
+    // shows maintenance. This also lets a later retry detect that it has ended.
+    if (game.attached && availability.result.value === true) await game.client.send('Page.reload');
     const expires = now() + 150000;
     let navigatedAt = 0;
     let readySince = 0;
@@ -131,7 +147,7 @@ export async function openActivitySession(account, {
             const { objects } = await game.client.send('Runtime.queryObjects', { prototypeObjectId: prototype.objectId, objectGroup: group });
             const response = await game.client.send('Runtime.callFunctionOn', {
               objectId: objects.objectId, objectGroup: group,
-              functionDeclaration: `function() { return (${installBridge.toString()}).call(this, (${createProtocol.toString()})()); }`,
+              functionDeclaration: `function() { window.__flowerServerAvailability?.watch(this); return (${installBridge.toString()}).call(this, (${createProtocol.toString()})()); }`,
             });
             if (response.exceptionDetails) throw new Error('无法接入官方活动连接');
             if (response.result.objectId) bridge = response.result.objectId;
