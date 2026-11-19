@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openActivitySession } from '../src/game/official-session.mjs';
 
-function fixture({ ready = false, connected = ready, navigationError, waitStep, readyAfterNavigations } = {}) {
+function fixture({ ready = false, connected = ready, navigationError, waitStep, readyAfterNavigations, refreshStartup = false } = {}) {
   const state = { ready, connected, navigated: 0, navigatedAt: [], closed: 0, released: 0, requests: 0, now: 100000, commands: [] };
   const client = {
     socket: { readyState: WebSocket.OPEN },
     async send(method, params = {}) {
       state.commands.push(method);
-      if (method === 'Runtime.evaluate') return { result: { objectId: 'prototype' } };
+      if (method === 'Runtime.evaluate') return params.expression.includes('refreshStartup')
+        ? { result: { value: refreshStartup } } : { result: { objectId: 'prototype' } };
       if (method === 'Runtime.queryObjects') return { objects: { objectId: 'sockets' } };
       if (method === 'Runtime.releaseObjectGroup') { state.released++; return {}; }
       if (method === 'Runtime.callFunctionOn') {
@@ -26,7 +27,7 @@ function fixture({ ready = false, connected = ready, navigationError, waitStep, 
   const options = {
     openGame: async account => {
       assert.equal(account, 'sample');
-      return { client, close: async () => { state.closed++; } };
+      return { client, attached: refreshStartup, close: async () => { state.closed++; } };
     },
     navigate: async received => {
       assert.equal(received, client);
@@ -109,4 +110,24 @@ test('启动超时会关闭准备中的连接并返回可重试提示', async ()
   assert.equal(state.released, 1);
   assert.equal(state.closed, 1);
   assert.equal(state.requests, 0);
+});
+
+test('官方维护时立即清理连接，保留503提示且不发送签到或领奖', async () => {
+  const error = Object.assign(new Error('官方服务器正在维护，请等维护结束后重试'), { status: 503 });
+  const { state, options } = fixture({ navigationError: error });
+  await assert.rejects(openActivitySession('sample', options), failure => failure === error);
+  assert.equal(state.navigated, 1);
+  assert.equal(state.closed, 1);
+  assert.equal(state.released, 1);
+  assert.equal(state.requests, 0);
+});
+
+test('旧窗口漏掉启动检查或保留维护状态时只重载一次，重试可恢复查询', async () => {
+  const { state, options } = fixture({ ready: true, refreshStartup: true });
+  const session = await openActivitySession('sample', options);
+  assert.equal(state.commands.filter(command => command === 'Page.reload').length, 1);
+  assert.equal(state.requests, 0, '重载只恢复官方启动检查，不重放签到或领奖');
+  await session.request(9191, new Uint8Array(4));
+  assert.equal(state.requests, 1);
+  await session.close();
 });

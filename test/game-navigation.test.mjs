@@ -169,3 +169,15 @@ test('SDK state pointer recognition reads only the exact tm terminator in the ca
   await foreign.loadUnity({sameCanvas:false,heap});
   assert.equal(foreign.context.__flowerGameNavigation.isOfficialSdkState(4), false);
 });
+
+test('明确维护状态立即返回503，不继续点击进入游戏或重载', async () => {
+  const p = page();
+  p.install();
+  await p.loadUnity();
+  p.context.__flowerServerAvailability = { read: () => ({ maintenance: true }) };
+  await assert.rejects(enterGameForApi(p.client), error => error.status === 503 && /官方服务器正在维护/.test(error.message));
+  assert.deepEqual(p.presses, []);
+  assert.equal(p.clientCalls.some(call => call.method === 'Page.reload'), false);
+  p.context.__flowerServerAvailability = { read: () => ({ maintenance: false }) };
+  assert.deepEqual(await enterGameForApi(p.client), { status: 'pressed' });
+});

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseDoubleSignCalendar } from '../src/game/calendar.mjs';
+import { createCalendarReader, parseDoubleSignCalendar } from '../src/game/calendar.mjs';
 
 const int = value => { const data = Buffer.alloc(4); data.writeUInt32LE(value); return data; };
 const byte = value => Buffer.from([value]);
@@ -74,4 +74,69 @@ test('重复档次或表ID、零门槛和超出活动天数的奖励配置不能
     assert.throws(() => parseDoubleSignCalendar(fixture({ items }), now), /累计奖励档次无效/);
   }
   assert.throws(() => parseDoubleSignCalendar(fixture({ group: 12 }), now), /累计奖励档次无效/);
+});
+
+test('并发查询共享官方资源下载，后续查询在五分钟内复用资源', async () => {
+  let clock = now, downloads = 0, finish;
+  const held = new Promise(resolve => { finish = resolve; });
+  const read = createCalendarReader({
+    now: () => clock,
+    loadData: async () => { downloads++; await held; return { version: '2026-11-18-1', data: fixture() }; },
+  });
+  const first = read(), second = read();
+  await Promise.resolve();
+  assert.equal(downloads, 1);
+  finish();
+  const results = await Promise.all([first, second]);
+  assert.equal(results[0].version, '2026-11-18-1');
+  assert.deepEqual(results[0], results[1]);
+  clock += 299_999;
+  await read();
+  assert.equal(downloads, 1);
+  clock++;
+  await read();
+  assert.equal(downloads, 2, '缓存到期重新读取官方配置');
+});
+
+test('缓存跨北京时间午夜时重新计算活动日期且返回值不能污染下次查询', async () => {
+  let clock = Date.parse('2026-11-18T23:59:00+08:00'), downloads = 0;
+  const read = createCalendarReader({
+    now: () => clock,
+    loadData: async () => { downloads++; return { version: '2026-11-18-1', data: fixture() }; },
+  });
+  const before = await read();
+  assert.equal(before.current.today, 6);
+  before.current.today = 99;
+  before.current.rewardConfig.items[0].need = 99;
+  clock = Date.parse('2026-11-19T00:01:00+08:00');
+  const after = await read();
+  assert.equal(after.current.today, 7);
+  assert.equal(after.current.rewardConfig.items[0].need, 1);
+  assert.equal((await read(Date.parse('2026-11-18T20:00:00+08:00'))).current.today, 6);
+  assert.equal(downloads, 1);
+});
+
+test('资源下载失败后共享查询均失败，下次可重新下载', async () => {
+  let downloads = 0;
+  const failure = new Error('官方资源下载超时');
+  const read = createCalendarReader({
+    now: () => now,
+    loadData: async () => { if (++downloads === 1) throw failure; return { version: '2026-11-18-1', data: fixture() }; },
+  });
+  const results = await Promise.allSettled([read(), read()]);
+  assert.equal(downloads, 1);
+  assert.ok(results.every(result => result.status === 'rejected' && result.reason === failure));
+  assert.equal((await read()).current.today, 6);
+  assert.equal(downloads, 2);
+});
+
+test('官方表解析失败后也允许重新下载，不缓存损坏数据', async () => {
+  let downloads = 0;
+  const read = createCalendarReader({
+    now: () => now,
+    loadData: async () => ({ version: '2026-11-18-1', data: ++downloads === 1 ? fixture({ group: 12 }) : fixture() }),
+  });
+  await assert.rejects(read(), /累计奖励档次无效/);
+  assert.equal((await read()).current.today, 6);
+  assert.equal(downloads, 2);
 });

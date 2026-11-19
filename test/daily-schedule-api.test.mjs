@@ -73,7 +73,7 @@ async function fixture(t, overrides = {}) {
   return { root, clock, calls, signed, activity, request, start, stop, maxActive: () => maxActive };
 }
 
-test('设置每日时间后到点逐个签到，单个失败不影响后续账号，保存结果并安排明天', async t => {
+test('设置每日时间后到点批量签到，单个失败不影响其余账号，按账号列表保存结果并安排明天', async t => {
   const f = await fixture(t);
   for (const account of ['main', 'already', 'bad', 'zlast']) {
     assert.equal((await f.request('add', { account, displayName: account === 'main' ? '我的主号' : '' })).status, 200);
@@ -97,8 +97,9 @@ test('设置每日时间后到点逐个签到，单个失败不影响后续账�
   assert.equal(state.lastRun.failed, 1);
   assert.equal(state.lastRun.results[0].displayName, '我的主号');
   assert.match(state.lastRun.results.find(result => result.account === 'bad').error, /登录已过期/);
-  assert.deepEqual(f.calls, ['main', 'already', 'bad', 'zlast']);
-  assert.equal(f.maxActive(), 1);
+  assert.deepEqual([...f.calls].sort(), ['already', 'bad', 'main', 'zlast']);
+  assert.deepEqual(state.lastRun.results.map(result => result.account), ['main', 'already', 'bad', 'zlast']);
+  assert.ok(f.maxActive() <= 5);
   assert.equal(f.signed.has('zlast'), true);
   const saved = JSON.parse(await readFile(join(f.root, 'daily-sign-schedule.json'), 'utf8'));
   assert.deepEqual(saved.lastRun, state.lastRun);

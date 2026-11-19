@@ -39,6 +39,7 @@ async function fixture(initial = {}) {
   const ids = new Map([
     'rows', 'count', 'batch', 'batchRun', 'batchQuery', 'batchSign', 'message',
     'add', 'alias', 'season-title', 'dates', 'milestones', 'activityState',
+    'batchSettingsForm', 'maxConcurrent', 'saveBatchSettings', 'batchSettingsStatus',
     'scheduleForm', 'scheduleTime', 'scheduleEnabled', 'saveSchedule', 'scheduleStatus', 'scheduleState', 'scheduleResults',
   ].map(id => [id, new Element()]));
   const requests = [];
@@ -63,6 +64,7 @@ async function fixture(initial = {}) {
       requests.push({ url, data });
       let result;
       if (url === '/api/calendar') result = null;
+      else if (url === '/api/batch-settings') result = { maxConcurrent: 5 };
       else if (url === '/api/schedule') result = { enabled: false, time: '09:00', timeZone: 'Asia/Shanghai', running: false, nextRunAt: null, lastRun: null, lastError: '' };
       else if (url === '/api/activity') result = { available: false, capabilities: {} };
       else if (url === '/api/accounts') result = await readAccounts();

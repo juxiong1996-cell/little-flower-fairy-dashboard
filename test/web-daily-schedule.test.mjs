@@ -31,6 +31,7 @@ async function fixture({ accounts = [{ account: 'main', status: '待检查' }], 
   const ids = new Map([
     'rows', 'count', 'batch', 'batchRun', 'batchQuery', 'batchSign', 'message',
     'add', 'alias', 'season-title', 'dates', 'milestones', 'activityState',
+    'batchSettingsForm', 'maxConcurrent', 'saveBatchSettings', 'batchSettingsStatus',
     'scheduleForm', 'scheduleTime', 'scheduleEnabled', 'saveSchedule', 'scheduleStatus', 'scheduleState', 'scheduleResults',
   ].map(id => [id, new Element()]));
   ids.get('scheduleTime').value = '09:00';
@@ -53,6 +54,7 @@ async function fixture({ accounts = [{ account: 'main', status: '待检查' }], 
       requests.push({ url, data });
       let result;
       if (url === '/api/calendar') result = null;
+      else if (url === '/api/batch-settings') result = { maxConcurrent: 5 };
       else if (url === '/api/activity') result = { available: false, capabilities: { progress: true, sign } };
       else if (url === '/api/accounts') result = accounts;
       else if (url === '/api/schedule') result = data ? await respond(data) : await readSchedule();
