@@ -1,6 +1,7 @@
 import { observeLogin, sanitizeLoginIdentity } from './login-identity.mjs';
 import { keepOfficialLoginSession } from './login-session.mjs';
 import { installGameNavigation } from './game-navigation.mjs';
+import { installServerAvailability } from './server-availability.mjs';
 
 const registrations = new WeakMap();
 
@@ -12,6 +13,7 @@ export async function registerGamePageHooks(client, gameOrigin) {
     registration = (async () => {
       await Promise.all([client.send('Page.enable'), client.send('Runtime.enable')]);
       const source = `
+        (${installServerAvailability.toString()})(${JSON.stringify(gameOrigin)});
         if (!Object.getOwnPropertyDescriptor(window, '__flowerLoginStatus')) {
           (${observeLogin.toString()})(${JSON.stringify(gameOrigin)}, ${sanitizeLoginIdentity.toString()}, ${keepOfficialLoginSession.toString()});
         }

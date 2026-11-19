@@ -82,6 +82,7 @@ export async function enterGameForApi(client) {
   const response = await client.send('Runtime.evaluate', {
     expression: `(() => {
       if (location.origin !== ${JSON.stringify(GAME_ORIGIN)}) return {status: 'waiting'};
+      if (window.__flowerServerAvailability?.read().maintenance) return {status: 'maintenance'};
       ${source};
       return window.__flowerGameNavigation?.enter() ?? {status: 'waiting'};
     })()`,
@@ -89,6 +90,9 @@ export async function enterGameForApi(client) {
   });
   if (response.exceptionDetails || !response.result?.value) throw new Error('无法读取官方游戏的启动状态');
   const state = response.result.value;
+  if (state.status === 'maintenance') {
+    throw Object.assign(new Error('官方服务器正在维护，暂时无法查询、签到或领奖；请等维护结束后重试。可点“进入游戏”查看官方提示。'), { status: 503 });
+  }
   if (state.status === 'needs_login') {
     throw Object.assign(new Error('登录已失效，请点“进入游戏”重新登录这个账号'), { status: 401 });
   }
