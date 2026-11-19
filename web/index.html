@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>小花仙 · 双生签到台</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body><header><div class="bar"><strong class="brand"><span class="mark" aria-hidden="true">✿</span> 小花仙</strong><span class="location">本机工作台</span></div></header>
+<main><h1>双生签到台</h1><section class="season" aria-labelledby="season-title"><div class="petals" aria-hidden="true">✿</div><div class="season-body"><span class="label">活动日历</span><h2 id="season-title">读取本期活动…</h2><p id="dates"></p><div id="milestones"></div></div></section>
+<section class="accounts"><div class="section-head"><div><h2>我的账号 <small id="count"></small></h2><p>登录后，可逐个或批量查询签到天数、完成今日签到。刷新页面后，请重新点击按钮查询。</p></div><div class="batch-actions"><button id="batchQuery" disabled>批量查询</button><button id="batchSign" disabled>批量签到</button><button id="batch" disabled>检查全部账号</button><button id="batchRun" disabled>全部签到领奖</button></div></div>
+<div id="rows" aria-busy="true"></div>
+<form id="add"><label for="alias">添加账号</label><input id="alias" maxlength="32" placeholder="自定义名称（可留空）" aria-describedby="add-name-hint" autocomplete="off"><button>添加</button><span id="add-name-hint" class="state">支持中文；留空则在登录后自动识别账号名或脱敏手机号。</span></form></section>
+<section class="accounts schedule" aria-labelledby="schedule-title"><h2 id="schedule-title">定时批量签到</h2><p class="schedule-intro">每天到点，自动为签到台里的全部账号完成今日签到。</p>
+<form id="scheduleForm" aria-busy="false"><label class="schedule-toggle" for="scheduleEnabled"><input id="scheduleEnabled" type="checkbox" disabled>开启定时签到</label><label for="scheduleTime">每天执行时间</label><input id="scheduleTime" type="time" value="09:00" step="60" required disabled aria-describedby="schedule-time-hint"><span id="schedule-time-hint" class="state">北京时间（UTC+8）</span><button id="saveSchedule" class="primary" type="submit" disabled>保存设置</button></form>
+<p id="scheduleState" class="state schedule-state" role="status">正在读取定时设置…</p>
+<p class="state schedule-help">请保持项目运行，网页可以关闭；停止项目后不会执行。每次到点都使用当前账号列表，添加或移除账号会自动生效。保存设置后不会立即签到。</p>
+<p class="state schedule-help">执行时需要联网；游戏登录过期时，请先进入游戏重新登录。</p>
+<div id="scheduleResults" class="schedule-results" aria-live="polite"></div><p id="scheduleStatus" class="message schedule-status" role="status" aria-live="polite"></p></section>
+<p class="note" id="activityState" role="status">正在检查活动服务…</p><p id="message" class="message" role="status" aria-live="polite"></p></main></body></html>
