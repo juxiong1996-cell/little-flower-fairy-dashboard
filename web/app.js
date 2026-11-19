@@ -6,6 +6,7 @@ let activityAvailable = false;
 let capabilities = {};
 let serviceReady = false;
 const pending = new Set();
+const pendingStatusElements = new Map();
 let editingAccount = null;
 let nameDraft = '';
 let refreshingNames = false;
@@ -15,6 +16,9 @@ let scheduleDirty = false;
 let savingSchedule = false;
 let refreshingSchedule = false;
 let scheduleRevision = 0;
+let savedBatchSettings = null;
+let savingBatchSettings = false;
+const defaultMaxConcurrent = 5;
 const nameFields = ['displayName', 'customName', 'accountName', 'maskedPhone', 'nameSource'];
 function accountLabel(row) { return row.displayName || row.account; }
 function applyName(row, value) {
@@ -42,6 +46,43 @@ function element(tag, text, className) {
   return el;
 }
 function say(text) { $('#message').textContent = text; }
+function drawBatchSettings() {
+  const disabled = !savedBatchSettings || savingBatchSettings || Boolean(batch);
+  $('#maxConcurrent').disabled = disabled;
+  $('#saveBatchSettings').disabled = disabled;
+  $('#saveBatchSettings').textContent = savingBatchSettings ? '正在保存…' : '保存并行设置';
+  $('#batchSettingsForm').setAttribute('aria-busy', String(savingBatchSettings));
+}
+async function loadBatchSettings() {
+  try {
+    savedBatchSettings = await api('batch-settings');
+    $('#maxConcurrent').value = savedBatchSettings.maxConcurrent;
+    $('#batchSettingsStatus').textContent = savedBatchSettings.lastError || `已保存：最多同时处理 ${savedBatchSettings.maxConcurrent} 个账号。`;
+  } catch (error) {
+    $('#batchSettingsStatus').textContent = '并行设置读取失败：' + error.message + '。请刷新页面重试。';
+  }
+  drawBatchSettings();
+}
+async function saveBatchSettings(event) {
+  event.preventDefault();
+  if (!savedBatchSettings || savingBatchSettings || batch) return;
+  const input = $('#maxConcurrent').value;
+  const maxConcurrent = Number(input);
+  const status = $('#batchSettingsStatus');
+  if (!/^\d+$/.test(input) || !Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1) {
+    status.textContent = '同时处理的账号数必须是大于 0 的整数。';
+    return;
+  }
+  savingBatchSettings = true;
+  status.textContent = '正在保存并行设置…';
+  draw();
+  try {
+    savedBatchSettings = await api('batch-settings', { maxConcurrent });
+    $('#maxConcurrent').value = savedBatchSettings.maxConcurrent;
+    status.textContent = `已保存：最多同时处理 ${savedBatchSettings.maxConcurrent} 个账号，批量操作和定时签到均使用此设置。`;
+  } catch (error) { status.textContent = error.message; }
+  finally { savingBatchSettings = false; draw(); }
+}
 function drawSchedule() {
   const unavailable = $('#scheduleEnabled').checked && (!accounts.length || !capabilities.sign);
   $('#saveSchedule').disabled = !savedSchedule || savingSchedule || unavailable;
@@ -146,13 +187,25 @@ async function queryDays(row) {
 }
 async function run(row, route) {
   pending.add(row.account);
-  row.pendingAction = route === 'activity/progress' ? '正在查询官方进度…' : route === 'activity/sign' ? '正在向官方服务器签到并核对结果…' : route === 'activity/run' ? '正在签到、领取礼盒并核对结果…' : '正在连接…';
+  const action = route === 'activity/progress' ? '正在查询官方进度…' : route === 'activity/sign' ? '正在向官方服务器签到并核对结果…' : route === 'activity/run' ? '正在签到、领取礼盒并核对结果…' : '正在连接…';
+  const startedAt = Date.now();
+  const updateWait = () => {
+    const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    const hint = seconds >= 30
+      ? '等待较久，官方可能正在维护或网络较慢；操作结束后可点“进入游戏”查看官方提示。'
+      : route.startsWith('activity/') ? '启动游戏可能需要一些时间。' : '';
+    row.pendingAction = `${action} 已等待 ${seconds} 秒。${hint}`;
+    const status = pendingStatusElements.get(row.account);
+    if (status) status.textContent = row.pendingAction;
+  };
+  updateWait();
   if (route.startsWith('activity/')) {
     row.activity = '';
     row.progressStale = Boolean(row.progress);
   }
-  say(batch ? `${batch.label} ${batch.completed + 1}/${batch.total}：${accountLabel(row)}，${row.pendingAction}` : '');
+  if (!batch) say('');
   draw();
+  const timer = setInterval(updateWait, 1000);
   try {
     const result = route === 'activity/progress' ? await queryDays(row) : await api(route, { account: row.account });
     applyName(row, result);
@@ -160,7 +213,7 @@ async function run(row, route) {
     else if (route === 'activity/progress') {
       row.progress = result;
       row.progressStale = false;
-      say(`${accountLabel(row)} 已查询到官方服务器的最新签到进度。`);
+      if (!batch) say(`${accountLabel(row)} 已查询到官方服务器的最新签到进度。`);
     }
     else if (route.startsWith('activity/')) {
       if (route === 'activity/sign') {
@@ -177,16 +230,21 @@ async function run(row, route) {
         const actions = result.verified.join('、') || '本次没有可执行的操作';
         row.activity = actions + '。累计 ' + result.signedCount + '/' + result.totalDays + ' 天。';
       }
-      say(`${accountLabel(row)}：${row.activity}`);
-    } else say(`${accountLabel(row)} 的官方游戏窗口已打开。`);
+      if (!batch) say(`${accountLabel(row)}：${row.activity}`);
+    } else if (route !== 'check' && !batch) say(`${accountLabel(row)} 的官方游戏窗口已打开。`);
     return { ok: true, alreadySigned: route === 'activity/sign' && (result.alreadySigned || !result.verified?.length) };
   } catch (error) {
     if (route.startsWith('activity/')) row.activity = error.message;
     else row.status = error.message;
-    say(error.message);
+    if (!batch) say(error.message);
     return { ok: false };
   }
-  finally { pending.delete(row.account); row.pendingAction = ''; draw(); }
+  finally {
+    if (timer !== undefined) clearInterval(timer);
+    pending.delete(row.account);
+    row.pendingAction = '';
+    draw();
+  }
 }
 async function removeAccount(row) {
   if (pending.has(row.account) || batch || !accounts.includes(row)) return;
@@ -252,7 +310,9 @@ function nameEditor(row) {
 function draw() {
   $('#count').textContent = `${accounts.length} 个`;
   drawSchedule();
-  const blocked = Boolean(batch) || pending.size > 0 || !accounts.length;
+  drawBatchSettings();
+  if (batch) say(`${batch.label}：已完成 ${batch.completed}/${batch.total}，正在处理 ${pending.size} 个，等待 ${Math.max(0, batch.total - batch.completed - pending.size)} 个。`);
+  const blocked = Boolean(batch) || savingBatchSettings || pending.size > 0 || !accounts.length;
   for (const [id, route, label, capability] of batchActions) {
     const button = $('#' + id);
     const available = capability === 'all' ? activityAvailable : !capability || capabilities[capability];
@@ -260,6 +320,7 @@ function draw() {
     button.textContent = batch && batch.route === route ? `${label} ${batch.completed}/${batch.total}` : label;
   }
   rows.replaceChildren();
+  pendingStatusElements.clear();
   for (const row of accounts) {
     const card = element('article', '', 'row');
     const info = element('div', '', 'account-info');
@@ -278,7 +339,9 @@ function draw() {
     heading.append(edit);
     info.append(heading);
     if (editingAccount === row.account) info.append(nameEditor(row));
-    info.append(element('span', pending.has(row.account) ? row.pendingAction || '正在保存…' : row.status, 'state'));
+    const status = element('span', pending.has(row.account) ? row.pendingAction || '正在保存…' : row.status, 'state');
+    if (pending.has(row.account)) pendingStatusElements.set(row.account, status);
+    info.append(status);
     if (row.progress) info.append(element('span', progressMessage(row.progress, row.progressStale), 'state'));
     else info.append(element('span', '签到进度未查询，请点击“查签到天数”', 'state'));
     if (row.activity) info.append(element('span', row.activity, 'state'));
@@ -305,23 +368,29 @@ function draw() {
     rows.append(card);
   }
   if (!accounts.length) rows.append(element('p', '先添加一个账号，再打开游戏登录。名称可以自定义，也可以在登录后自动识别。'));
-  rows.setAttribute('aria-busy', 'false');
+  rows.setAttribute('aria-busy', String(Boolean(batch) || pending.size > 0));
 }
 async function runBatch(route, label) {
-  if (batch || pending.size || !accounts.length) return;
+  if (batch || savingBatchSettings || pending.size || !accounts.length) return;
   const targets = [...accounts];
+  const maxConcurrent = savedBatchSettings?.maxConcurrent ?? defaultMaxConcurrent;
   let succeeded = 0, failed = 0, alreadySigned = 0;
+  let next = 0;
   batch = { route, label, total: targets.length, completed: 0 };
   draw();
   try {
-    for (const row of targets) {
-      const result = await run(row, route);
-      if (result.ok) {
-        succeeded++;
-        if (result.alreadySigned) alreadySigned++;
-      } else failed++;
-      batch.completed++;
-    }
+    await Promise.all(Array.from({ length: Math.min(maxConcurrent, targets.length) }, async () => {
+      while (next < targets.length) {
+        const row = targets[next++];
+        const result = await run(row, route);
+        if (result.ok) {
+          succeeded++;
+          if (result.alreadySigned) alreadySigned++;
+        } else failed++;
+        batch.completed++;
+        draw();
+      }
+    }));
   } finally {
     batch = false;
     draw();
@@ -331,6 +400,8 @@ async function runBatch(route, label) {
   }
 }
 for (const [id, route, label] of batchActions) $('#' + id).onclick = () => runBatch(route, label);
+$('#batchSettingsForm').onsubmit = saveBatchSettings;
+$('#maxConcurrent').oninput = () => { $('#batchSettingsStatus').textContent = '设置尚未保存，点击“保存并行设置”后生效。'; };
 $('#scheduleForm').onsubmit = saveSchedule;
 $('#scheduleTime').oninput = scheduleChanged;
 $('#scheduleEnabled').onchange = scheduleChanged;
@@ -371,6 +442,7 @@ api('activity').then(result => {
   else state.textContent = '点击“查签到天数”获取官方服务器最新进度。可用的操作显示在账号旁。';
   draw();
 }).catch(error => { $('#activityState').textContent = error.message; });
+await loadBatchSettings();
 try { accounts = await api('accounts'); draw(); }
 catch (error) { rows.textContent = error.message; rows.setAttribute('aria-busy', 'false'); }
 
