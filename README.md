@@ -6,7 +6,7 @@
 
 ## 下载免安装版
 
-打开本仓库的 [Releases 下载页](https://github.com/juxiong1996-cell/little-flower-fairy-dashboard/releases)，下载 `LittleFlowerFairy-v1.0.0-windows-x64.zip`。GitHub 自动生成的 “Source code” 压缩包是源码，不含运行环境；直接使用请下载上述 Windows 便携包。
+打开本仓库的 [Releases 下载页](https://github.com/juxiong1996-cell/little-flower-fairy-dashboard/releases)，下载 `LittleFlowerFairy-v1.0.1-windows-x64.zip`。GitHub 自动生成的 “Source code” 压缩包是源码，不含运行环境；直接使用请下载上述 Windows 便携包。
 
 1. 将压缩包完整解压到一个文件夹。
 2. 双击 `启动签到台.cmd`，网页会自动打开。
@@ -15,6 +15,8 @@
 适用于 Windows 10/11 的 Intel/AMD 64 位电脑，需要已安装 Edge 或 Chrome 并可正常联网。便携包自带 Node.js，不用安装开发工具。请保留启动窗口；关闭窗口或关机后定时签到停止。
 
 包内附有 `LICENSE`、`README.md` 和 `使用说明.txt`，下载页另提供 `SHA256SUMS.txt` 以核对文件完整性。
+
+v1.0.1 修复官方维护时一直显示“正在查询官方进度”的问题：识别官方维护回复后会及时提示并恢复按钮。等待期间显示已用秒数，活动配置短期共享缓存以减少重复下载。2026-11-19 实测维护场景约 13 秒返回明确提示，未执行签到或领奖；维护结束前仍需等待官方开服。
 
 ## 运行环境
 
@@ -47,6 +49,8 @@ node src/app/launcher.mjs
 已修复游戏启动时先退出、再登录导致的登录记录丢失。2026-11-19 已实际验证：关闭第二号的游戏窗口后，后台重新启动并成功查询官方签到进度；验证没有执行签到或领奖。修复只针对签到台控制的启动流程，详细范围见 [启动导航说明](docs/game-navigation.md)。
 
 网页里可以设置每日签到时间。定时签到依赖项目持续运行，关闭服务后停止；具体操作按网页提示进行。在终端按 `Ctrl+C` 可停止服务。
+
+批量查询、签到、检查账号和签到领奖支持并行处理，默认最多同时处理 5 个账号。可在“我的账号”中修改“最多同时处理账号”并保存，重启后仍生效；定时签到也共用这个数量上限。完成一个账号后会自动接着处理下一个，单个账号失败不会中断其他账号。
 
 ## 本机数据
 
