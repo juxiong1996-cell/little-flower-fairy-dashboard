@@ -1,0 +1,91 @@
+# 小花仙签到台
+
+一个在自己电脑上运行的小花仙签到工具。通过官方游戏页面登录，可管理多个账号、查询签到进度、进行今日签到和领取已解锁的累计礼盒。
+
+**仅供个人学习和非商业研究使用，禁止商业使用、收费销售、收费分发或用于商业服务。** 源码和便携包均适用 [学习用途许可](LICENSE)。这是一个非官方学习项目，与游戏官方不存在隶属、合作或背书关系；游戏名称、商标、资源及其他相关权利归原权利人所有。
+
+## 下载免安装版
+
+打开本仓库的 [Releases 下载页](https://github.com/juxiong1996-cell/little-flower-fairy-dashboard/releases)，下载 `LittleFlowerFairy-v1.0.0-windows-x64.zip`。GitHub 自动生成的 “Source code” 压缩包是源码，不含运行环境；直接使用请下载上述 Windows 便携包。
+
+1. 将压缩包完整解压到一个文件夹。
+2. 双击 `启动签到台.cmd`，网页会自动打开。
+3. 添加账号，点击“进入游戏”，在官方页面自行登录，然后回到签到台使用。
+
+适用于 Windows 10/11 的 Intel/AMD 64 位电脑，需要已安装 Edge 或 Chrome 并可正常联网。便携包自带 Node.js，不用安装开发工具。请保留启动窗口；关闭窗口或关机后定时签到停止。
+
+包内附有 `LICENSE`、`README.md` 和 `使用说明.txt`，下载页另提供 `SHA256SUMS.txt` 以核对文件完整性。
+
+## 运行环境
+
+- Windows 10 / 11。
+- Microsoft Edge 或 Google Chrome，程序会自动寻找常规位置安装的浏览器。
+- 从源码运行时需要 Node.js 22 或更新版本，以及原生 `WebSocket` 支持。便携发布包已经附带 Node.js，使用者不需要安装。
+
+项目使用 JavaScript 和 Node.js 自带的模块，无需运行 `npm install`。不需要 .NET Framework、Windows 中文文字识别组件或 Python。官方游戏的启动导航由 JavaScript 完成，查询、签到和领奖通过官方游戏连接进行。
+
+## 发给别人使用
+
+发送制作好的便携压缩包。对方完整解压后，双击“启动签到台.cmd”，签到台会自动在浏览器打开，再由对方自行添加和登录账号。
+
+发布包自带 Node.js，浏览器使用对方电脑已有的 Edge 或 Chrome。启动窗口需要保留；关闭网页后定时签到仍可运行，关闭启动窗口或关机后停止。
+
+打包命令、许可证和发布验收说明见 [便携发布说明](docs/portable.md)。发布包只包含程序文件和运行环境，不包含制作者的账号资料。
+
+## 启动
+
+在项目目录打开终端，运行：
+
+```powershell
+node src/app/launcher.mjs
+```
+
+也可以运行 `npm start`。启动器会自动在浏览器打开签到台，默认地址是 `http://127.0.0.1:4876`。
+
+在网页中添加账号，点击“进入游戏”，在打开的官方游戏浏览器窗口中自行登录。登录完成后，回到签到台操作。可以关闭这个游戏窗口；下次查询时，签到台会在后台重新打开游戏并恢复登录。官方登录状态过期后，仍需再次点击“进入游戏”登录。
+
+已修复游戏启动时先退出、再登录导致的登录记录丢失。2026-11-19 已实际验证：关闭第二号的游戏窗口后，后台重新启动并成功查询官方签到进度；验证没有执行签到或领奖。修复只针对签到台控制的启动流程，详细范围见 [启动导航说明](docs/game-navigation.md)。
+
+网页里可以设置每日签到时间。定时签到依赖项目持续运行，关闭服务后停止；具体操作按网页提示进行。在终端按 `Ctrl+C` 可停止服务。
+
+## 本机数据
+
+账号的浏览器登录状态、显示名称和定时设置保存在：
+
+```text
+%LOCALAPPDATA%\LittleFlowerFairyLogin
+```
+
+这些数据位于仓库之外。不要上传或分享这个目录。仓库中的 `.local/` 用于开发缓存和截图，已加入 Git 忽略规则。
+
+## 可选配置
+
+通过环境变量可以修改端口或加载自定义活动适配器。例如在 PowerShell 中修改端口：
+
+```powershell
+$env:FLOWER_WEB_PORT = '4877'
+node src/app/launcher.mjs
+```
+
+- `FLOWER_WEB_PORT`：网页端口，默认 `4876`，服务只监听本机地址。
+- `FLOWER_ACTIVITY_ADAPTER`：自定义活动适配器的模块路径；不设置时使用内置官方活动适配器。接口见 `src/game/activity.mjs`。
+- `FLOWER_BROWSER_PATH`：指定 Edge 或 Chrome 的 `.exe` 文件完整路径；不设置时自动寻找随包浏览器、已安装的 Chrome 和 Edge。
+- `FLOWER_DATA_DIR`：指定本机数据文件夹的完整路径；不设置时继续使用原来的 `%LOCALAPPDATA%\LittleFlowerFairyLogin`，原有账号和定时设置无需迁移。
+
+## 测试与开发
+
+运行自动化测试：
+
+```powershell
+node --test "test/*.test.mjs"
+```
+
+安装了 npm 时也可以运行 `npm test`。测试使用模拟数据和临时目录，不需要登录真实账号。
+
+命令行用法可运行 `node src/browser/login.mjs --help` 查看。累计领奖协议和验证范围见 [协议说明](docs/reward-protocol.md)。目录用途见 [项目结构](docs/project-structure.md)，纯 JavaScript 启动方式和实际验证范围见 [启动导航说明](docs/game-navigation.md)。
+
+## 许可证
+
+本项目采用自定义 [学习用途许可（Learning Use Only License）](LICENSE)：允许个人学习、非商业研究及在相同限制下免费分享；禁止商业使用、收费销售、收费分发或用于商业服务。修改或分享时须保留署名、许可和权利说明，不得将修改版本冒充官方版本。
+
+“仅供学习”的用途限制意味着这是公开源码的学习项目，不采用 MIT、Apache 等允许商业使用的通用开源许可。随包 Node.js 及其他第三方组件继续遵守其各自的许可证，详见 `runtime/LICENSE.node.txt`。

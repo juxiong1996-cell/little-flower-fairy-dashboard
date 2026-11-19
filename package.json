@@ -1,0 +1,20 @@
+{
+  "name": "little-flower-fairy-dashboard",
+  "version": "1.0.0",
+  "description": "小花仙签到台：仅供个人学习和非商业研究的本机签到工具",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juxiong1996-cell/little-flower-fairy-dashboard.git"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/app/launcher.mjs",
+    "build:portable": "node scripts/build-portable.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}

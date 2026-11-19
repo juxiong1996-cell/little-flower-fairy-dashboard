@@ -1,0 +1,2 @@
+# Windows 批处理需要保留 CRLF，避免解压后启动解析失败。
+*.cmd text eol=crlf

@@ -1,0 +1,24 @@
+# 本机分析缓存、截图、备份和调试产物
+/.local/
+
+# 免安装发布包与随包运行环境
+/dist/
+
+# 私有环境配置；示例配置可以提交
+.env
+.env.*
+!.env.example
+
+# 依赖、日志和测试覆盖率
+node_modules/
+*.log
+coverage/
+.nyc_output/
+
+# 系统和编辑器临时文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.swp
+*~
