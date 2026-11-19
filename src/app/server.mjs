@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { APP_ROOT, PROFILE_ROOT, checkAccount, showAccountGame, readAccountIdentity, validAccount } from '../browser/login.mjs';
 import { readAccountName, setAccountName, rememberAccountIdentity, validateAccountName } from '../accounts/account-names.mjs';
 import { createAccountStore } from '../accounts/account-store.mjs';
+import { createBatchController } from '../batch/batch-controller.mjs';
 import { createDailyScheduler } from '../schedule/daily-schedule.mjs';
 import { readDoubleSignCalendar } from '../game/calendar.mjs';
 import { queryLiveSignedDays } from '../game/sign-progress.mjs';
@@ -40,6 +41,8 @@ export function createDashboardServer({
   const statuses = new Map();
   const busy = new Set();
   const accountStore = createAccountStore(appRoot, profileRoot);
+  const batchController = createBatchController({ root: appRoot });
+  batchController.catch(() => {});
   const activityWrites = new Map([['/api/activity/sign', 'sign'], ['/api/activity/run', 'all']]);
   async function accountName(account) {
     // A closed game must never prevent renaming or listing accounts.
@@ -72,17 +75,20 @@ export function createDashboardServer({
       }
       if (!(await accountStore.list()).includes(account)) fail(404, '账号不存在');
       if (path === '/api/name') return { account, ...await setAccountName(appRoot, account, body.displayName) };
-      const inSession = action => activity.withAccount ? activity.withAccount(account, action) : action();
-      if (path === '/api/activity/progress') result = await inSession(() => queryLiveSignedDays(activity, account));
-      else if (activityWrites.has(path)) result = await inSession(() => runActivity(activity, account, activityWrites.get(path)));
-      else if (path === '/api/open') {
-        await showGame(account);
-        result = { message: '官方游戏窗口已打开' };
-      } else {
+      // Reserve this account before waiting for a shared slot, so another page
+      // or the daily scheduler cannot queue a duplicate action for it.
+      result = await (await batchController).run(async () => {
+        const inSession = action => activity.withAccount ? activity.withAccount(account, action) : action();
+        if (path === '/api/activity/progress') return inSession(() => queryLiveSignedDays(activity, account));
+        if (activityWrites.has(path)) return inSession(() => runActivity(activity, account, activityWrites.get(path)));
+        if (path === '/api/open') {
+          await showGame(account);
+          return { message: '官方游戏窗口已打开' };
+        }
         const status = await checkLogin(account);
         statuses.set(account, status);
-        result = { status };
-      }
+        return { status };
+      });
     } finally { busy.delete(account); }
     return { ...result, ...await accountName(account) };
   }
@@ -92,17 +98,16 @@ export function createDashboardServer({
       const timestamp = () => new Date(scheduleClock.now ? scheduleClock.now() : Date.now()).toISOString();
       const startedAt = timestamp();
       const targets = await accountStore.list();
-      const results = [];
-      for (const account of targets) {
+      const results = await Promise.all(targets.map(async account => {
         const name = await readAccountName(appRoot, account).catch(() => ({ displayName: account }));
         try {
           const result = await accountAction('/api/activity/sign', { account });
-          results.push({ account, displayName: result.displayName || name.displayName, ok: true,
-            alreadySigned: result.alreadySigned === true });
+          return { account, displayName: result.displayName || name.displayName, ok: true,
+            alreadySigned: result.alreadySigned === true };
         } catch (error) {
-          results.push({ account, displayName: name.displayName, ok: false, error: error.message });
+          return { account, displayName: name.displayName, ok: false, error: error.message };
         }
-      }
+      }));
       return { startedAt, finishedAt: timestamp(), total: results.length,
         signed: results.filter(result => result.ok && !result.alreadySigned).length,
         alreadySigned: results.filter(result => result.ok && result.alreadySigned).length,
@@ -131,6 +136,7 @@ export function createDashboardServer({
         if (path === '/api/activity') return json(200, { available: activityCapabilities(activity).all, capabilities: activityCapabilities(activity) });
         if (path === '/api/calendar') return json(200, (await readCalendar()).current);
         if (path === '/api/schedule') return json(200, (await schedule).getStatus());
+        if (path === '/api/batch-settings') return json(200, (await batchController).getSettings());
         if (path === '/api/accounts') {
           const accounts = await accountStore.list();
           return json(200, await Promise.all(accounts.map(async account => ({
@@ -139,9 +145,10 @@ export function createDashboardServer({
           }))));
         }
       }
-      if (req.method === 'POST' && ['/api/schedule', '/api/add', '/api/remove', '/api/name', '/api/open', '/api/check', '/api/activity/progress', ...activityWrites.keys()].includes(path)) {
+      if (req.method === 'POST' && ['/api/schedule', '/api/batch-settings', '/api/add', '/api/remove', '/api/name', '/api/open', '/api/check', '/api/activity/progress', ...activityWrites.keys()].includes(path)) {
         if (req.headers.origin !== origin || req.headers['content-type']?.split(';')[0] !== 'application/json') fail(403, '请从本机页面操作');
         const body = await readBody(req);
+        if (path === '/api/batch-settings') return json(200, await (await batchController).update(body));
         if (path === '/api/schedule') {
           if (body?.enabled === true) {
             if (!activityCapabilities(activity).sign) fail(503, '签到服务尚未接通');
