@@ -25,8 +25,9 @@ function fixture({ ready = false, connected = ready, navigationError, waitStep, 
     },
   };
   const options = {
-    openGame: async account => {
+    openGame: async (account, gameOptions) => {
       assert.equal(account, 'sample');
+      assert.deepEqual(gameOptions, { closeOnFinish: true }, '活动操作必须请求完成后关闭游戏，包括启动失败时的清理');
       return { client, attached: refreshStartup, close: async () => { state.closed++; } };
     },
     navigate: async received => {
