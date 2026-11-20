@@ -152,13 +152,25 @@ export async function readAccountIdentity(account) {
 }
 
 // Reuse this account's authenticated official game connection whenever possible.
-export async function openOfficialGame(account) {
+export async function openOfficialGame(account, {
+  closeOnFinish = false, profileRoot = PROFILE_ROOT, attach = attachGame, launch = openGame,
+} = {}) {
   if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(account)) throw new Error('账号别名无效');
-  const profile = join(PROFILE_ROOT, 'account-' + account);
+  const profile = join(profileRoot, 'account-' + account);
   if (!(await stat(profile)).isDirectory()) throw new Error('账号配置不存在');
-  const existing = await attachGame(join(profile, 'DevToolsActivePort'));
-  if (existing) return existing;
-  const game = await openGame(profile, false);
+  const existing = await attach(join(profile, 'DevToolsActivePort'));
+  if (existing) {
+    if (!closeOnFinish) return existing;
+    return { ...existing, close: async () => {
+      // Activity operations own this account's dedicated browser until cleanup.
+      // Identity reads and passive listeners still only detach their debugger.
+      try { await existing.client.send('Browser.close', {}, 2_000); }
+      catch { /* The browser can disconnect before acknowledging its shutdown. */ }
+      finally { await existing.close(); }
+    } };
+  }
+  const game = await launch(profile, false);
+  if (closeOnFinish) return game;
   return { ...game, close: async () => game.detach() };
 }
 
