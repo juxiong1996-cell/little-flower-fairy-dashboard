@@ -114,7 +114,7 @@ export async function openActivitySession(account, {
   openGame = openOfficialGame, navigate = enterGameForApi,
   now = Date.now, wait = delay,
 } = {}) {
-  const game = await openGame(account);
+  const game = await openGame(account, { closeOnFinish: true });
   const group = 'flower-activity-api';
   let bridge;
   try {
