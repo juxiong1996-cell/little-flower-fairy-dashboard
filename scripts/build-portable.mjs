@@ -206,6 +206,7 @@ export async function buildPortable({ sourceRoot = projectRoot, outputDir = join
       '2. 双击“启动签到台.cmd”，签到台会自动在浏览器打开。',
       '3. 添加账号，点击“进入游戏”，在官方游戏窗口自行登录。', '',
       '请保留启动窗口。网页可以关闭；关闭启动窗口或关机后，定时签到停止。',
+      '查询、签到和领奖结束后会自动关闭对应游戏并释放内存；签到和领奖会先复查结果，失败时也会清理，已打开的游戏窗口也会关闭。',
       '再次双击启动文件可以重新打开正在运行的签到台。', '',
       `适用系统：Windows 10/11，${runtime.arch === 'x64' ? '64 位 Intel/AMD' : 'ARM64'}。`,
       '程序自带 Node.js，无需安装 Node.js、npm、Python、.NET 或中文文字识别组件。',
